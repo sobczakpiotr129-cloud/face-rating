@@ -657,7 +657,7 @@ function startScoring() {
 }
 
 async function callQwenAPI(apiKey, imageData) {
-  var prompt = '你是一位面部美学分析师。评分时请遵循以下原则：先仔细观察照片，根据实际颜值水平给出整数分，然后给每个分数加上不同的两位小数。每个分数的小数部分必须互不相同且毫无规律。\n\n## 评分步骤\n第一步：判断颜值等级（从以下选择一个）\n- S级(90-100)：惊艳，几乎无可挑剔 → 整数部分取 90-99\n- A级(80-89)：非常好看 → 整数部分取 80-89\n- B级(65-79)：好看，有吸引力 → 整数部分取 65-79\n- C级(50-64)：普通人，无明显特色 → 整数部分取 50-64\n- D级(35-49)：中等偏下 → 整数部分取 35-49\n- E级(0-34)：明显缺陷 → 整数部分取 0-34\n\n第二步：为每个维度确定整数分（根据实际表现在该等级区间内选择）\n1. features：五官协调度（三庭五眼、眉眼鼻关系、唇齿下颌）\n2. symmetry：面部对称性\n3. skin：皮肤状态（均匀度、细腻度、瑕疵）\n4. faceShape：脸型轮廓（下颌线、颧骨、流畅度）\n5. boneStructure：骨相结构（鼻梁、眉弓眼窝、下颌）\n6. temperament：气质神态（眼神、气场、亲和力）\n\n第三步：加小数——为7个分数各加一个不同的两位小数（.01到.99之间），7个小数严禁相同或呈规律性，越乱越好。\n\n第四步：overall 综合分 = 加权平均后的独立分数，不等于各维度简单平均。\n\n## 输出格式（仅纯 JSON）\n{\n  "overall": 整数.XX,\n  "features": 整数.XX,\n  "symmetry": 整数.XX,\n  "skin": 整数.XX,\n  "faceShape": 整数.XX,\n  "boneStructure": 整数.XX,\n  "temperament": 整数.XX,\n  "comment": "评语"\n}\n\n## comment：3-5条评语，每条40字内，\\n分隔，>开头，重点用**加粗**\n\n非人脸照片所有分数为0。';
+  var prompt = '你是一位面部美学分析师。根据照片实际颜值水平给出1-100的整数评分，只需整数，不需要小数。\n\n## 评分步骤\n第一步：判断颜值等级\n- S级(90-100)：惊艳，无可挑剔\n- A级(80-89)：非常好看\n- B级(65-79)：好看，有吸引力\n- C级(50-64)：普通人\n- D级(35-49)：中等偏下\n- E级(0-34)：明显缺陷\n\n第二步：在每个等级区间内为以下维度确定整数分，好照片的分数要明显高于差照片\n1. features：五官协调度（三庭五眼、眉眼鼻关系、唇齿下颌）\n2. symmetry：面部对称性\n3. skin：皮肤状态（均匀度、细腻度、瑕疵）\n4. faceShape：脸型轮廓（下颌线、颧骨、流畅度）\n5. boneStructure：骨相结构（鼻梁、眉弓眼窝、下颌）\n6. temperament：气质神态（眼神、气场、亲和力）\n\n第三步：overall 综合分独立判断，不等于各维度平均\n\n## 输出格式（仅纯 JSON，所有分数为整数，不要小数）\n{\n  "overall": 整数,\n  "features": 整数,\n  "symmetry": 整数,\n  "skin": 整数,\n  "faceShape": 整数,\n  "boneStructure": 整数,\n  "temperament": 整数,\n  "comment": "评语"\n}\n\n## comment：3-5条评语，每条40字内，\\n分隔，>开头，重点用**加粗**\n\n非人脸照片所有分数为0。';
 
   var body = {
     model: 'qwen-vl-max',
@@ -705,7 +705,30 @@ async function callQwenAPI(apiKey, imageData) {
   if (codeBlockMatch) {
     jsonStr = codeBlockMatch[1];
   }
-  return JSON.parse(jsonStr);
+  var result = JSON.parse(jsonStr);
+  result = addRandomDecimals(result);
+  return result;
+}
+
+function addRandomDecimals(result) {
+  var keys = ['overall', 'features', 'symmetry', 'skin', 'faceShape', 'boneStructure', 'temperament'];
+  var usedDecimals = [];
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var intVal = parseInt(result[key], 10) || 0;
+    if (intVal === 0) { result[key] = 0; continue; }
+    // 生成不重复的两位小数
+    var dec;
+    var attempts = 0;
+    do {
+      dec = Math.floor(Math.random() * 99) + 1; // 1-99
+      attempts++;
+    } while (usedDecimals.indexOf(dec) !== -1 && attempts < 200);
+    usedDecimals.push(dec);
+    var decimalStr = dec < 10 ? '0' + dec : '' + dec;
+    result[key] = parseFloat(intVal + '.' + decimalStr);
+  }
+  return result;
 }
 
 function displayResult(result) {
